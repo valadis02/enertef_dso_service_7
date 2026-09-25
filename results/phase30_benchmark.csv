@@ -1,0 +1,7 @@
+set,network,buses,baseline,final
+synthetic-clean,random radial (15 buses),15,0.786,1.0
+synthetic-clean,random radial (25 buses),25,0.958,0.958
+synthetic-clean,IEEE 33-bus,33,1.0,1.0
+real-class0.5,1-LV-rural1--0-sw,14,0.231,0.308
+real-class0.5,1-LV-semiurb4--0-sw,43,0.048,0.262
+real-class0.5,1-LV-urban6--0-sw,58,0.035,0.123

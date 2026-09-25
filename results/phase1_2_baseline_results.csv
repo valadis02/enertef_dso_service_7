@@ -1,0 +1,2 @@
+precision,recall,reconstruction_accuracy,n_true_edges,n_pred_edges,n_correct_edges
+1.0,1.0,1.0,32,32,32

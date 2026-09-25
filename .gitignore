@@ -3,3 +3,6 @@ __pycache__/
 data/*.csv
 results/*.csv
 .venv/
+
+__pycache__/
+*.pyc

@@ -1,0 +1,6 @@
+precision,recall,reconstruction_accuracy,n_true_edges,n_pred_edges,n_correct_edges,missing_fraction
+1.0,1.0,1.0,32,32,32,0.0
+1.0,1.0,1.0,32,32,32,0.05
+1.0,1.0,1.0,32,32,32,0.1
+1.0,1.0,1.0,32,32,32,0.2
+1.0,1.0,1.0,32,32,32,0.3

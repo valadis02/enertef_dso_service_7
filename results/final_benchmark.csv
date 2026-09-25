@@ -1,0 +1,8 @@
+set,network,buses,baseline,best,best_median,best_min
+"synthetic (clean, n=12)",random radial 15 buses,15,0.845,0.964,1.0,0.857
+"synthetic (clean, n=12)",random radial 25 buses,25,0.896,0.983,1.0,0.958
+"synthetic (clean, n=12)",random radial 40 buses,40,0.927,0.979,0.974,0.949
+synthetic (clean),IEEE 33-bus,33,1.0,1.0,,
+real (good meters + angles),1-LV-rural1--0-sw,14,0.385,0.769,,
+real (good meters + angles),1-LV-semiurb4--0-sw,43,0.071,0.714,,
+real (good meters + angles),1-LV-urban6--0-sw,58,0.053,0.614,,

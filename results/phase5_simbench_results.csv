@@ -1,0 +1,3 @@
+precision,recall,reconstruction_accuracy,n_true_edges,n_pred_edges,n_correct_edges,condition
+0.5714285714285714,0.6153846153846154,0.6153846153846154,13,14,8,clean_simbench
+0.14285714285714285,0.15384615384615385,0.15384615384615385,13,14,2,class0.5_noise_simbench
