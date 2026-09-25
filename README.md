@@ -1,47 +1,72 @@
-# EnerTEF DSO Service 7 — AI-based Grid Topology Identification
+# DSO Service 7 — AI-based Grid Topology Identification
 
-Reconstructing real distribution-grid topology from voltage/power measurements,
-instead of relying on possibly outdated asset-management records.
+EnerTEF TEF DSO node · D2.2 §2.6.7
 
-Part of the EnerTEF TEF DSO node (German node, partner Gridhound/RWTH).
-Official service repo: https://github.com/ENERTEF/TEF-DSO-Service-7----AI-based-Grid-Topology-Identification-Service
+Validates the topology recorded in a DSO's asset database against
+operational measurements, and raises alerts for operator verification.
 
-## Status
-
-- [x] Phase 1: synthetic data generation (pandapower, IEEE 33-bus feeder)
-- [x] Phase 2: baseline — Pearson correlation + Maximum Spanning Tree (Kruskal)
-      -> precision / recall / reconstruction accuracy = 1.0 on clean data
-- [ ] Phase 3: robustness testing (noise, missing data, switching events)
-- [ ] Phase 4: advanced methods (Graphical Lasso, MRF, GNN) — optional
-- [ ] Phase 5: SimBench / real EnerTEF data
-
-## Setup
+## Install
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## Run
+## Use
 
-```bash
-python src/phase1_2_baseline.py
+```python
+from topology import data, validate_topology
+
+net = data.load_simbench("1-LV-semiurb4--0-sw")
+V, A = data.simulate_simbench(net)
+V, A = data.add_meter_noise(V, A, "class_0.5+angle")
+
+result = validate_topology(
+    V, documented_topology, angle=A,
+    possible_connections=switch_list,   # omit for flagging only
+)
+
+result.topology     # corrected topology
+result.alerts       # ranked discrepancies
+result.confidence   # score per edge
 ```
 
-Outputs:
-- `data/voltage_timeseries.csv` — simulated per-bus voltage magnitudes
-- `results/phase1_2_baseline_results.csv` — evaluation metrics
+Supply `possible_connections` — the physically existing lines whose state
+is uncertain, including those recorded as open — and the service corrects
+the topology. Omit it and the service only ranks the documented edges by
+how poorly the measurements support them.
 
-## Method
+The DSO is not asked where the errors are, only which connections are
+physically possible.
 
-1. Simulate `n_steps` power-flow snapshots on a known IEEE test feeder with
-   randomized (correlated + per-load noise) load profiles -> per-bus voltage
-   time-series with known ground-truth topology.
-2. Compute the Pearson correlation matrix across all bus voltage time-series.
-3. Extract the Maximum Spanning Tree (Kruskal) from the correlation graph as
-   the predicted topology.
-4. Evaluate edge-identification precision/recall and reconstruction accuracy
-   against the known ground truth.
+## Accuracy
 
-Reference: Bolognani et al., "Identification of power distribution network
-topology via voltage correlation analysis" (IEEE CDC 2013); Frontiers in
-Energy Research (2022), correlation + Kruskal method for LV networks.
+| Mode | Meters | Accuracy |
+|---|---|---|
+| Validation + correction | Class 0.5 | 94% |
+| Validation + correction | Class 0.5 + 0.01° angle | 99% |
+| Flagging only | Class 0.5 | 25–64% precision |
+| Flagging only | + angle | 62–93% precision |
+| Blind reconstruction | Class 0.5 | 12–31% |
+
+Blind reconstruction is measurement-limited under realistic noise and is
+kept as a capability, not as the operational mode.
+
+## Layout
+
+```
+topology/     the service
+experiments/  one script per table in the report
+results/      CSV outputs
+```
+
+See `DSO_Service7_Summary.md` for the evaluation and its limits, and
+`DSO_Service7_Delivery_Plan.md` for what remains.
+
+Full experimental history, including the approaches that did not work, is
+on the `archive` branch.
+
+## Limits
+
+No field validation: power flow and meter noise are simulated on SimBench
+network models. Single-phase equivalent throughout, so phase
+identification is not covered. LV only.
