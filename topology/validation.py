@@ -39,6 +39,55 @@ class ValidationResult:
                 f"{self.topology.number_of_edges()} edges, "
                 f"{len(self.alerts)} alerts")
 
+    def to_dict(self):
+        """Plain structure: topology, per-edge confidence, alerts."""
+        def key(e):
+            a, b = tuple(e)
+            return [int(a), int(b)]
+        return {
+            "mode": "correction" if self.corrected else "flagging",
+            "edges": [
+                {"from": int(a), "to": int(b),
+                 "confidence": round(self.confidence.get(frozenset((a, b)), 0.0), 4)}
+                for a, b in self.topology.edges()
+            ],
+            "alerts": [
+                {"edge": key(al["edge"]),
+                 **{k: (round(v, 4) if isinstance(v, float) else v)
+                    for k, v in al.items() if k != "edge"}}
+                for al in self.alerts
+            ],
+        }
+
+    def to_json(self, path=None, indent=2):
+        """Serialise to JSON. Writes to `path` if given, else returns a string."""
+        import json
+        text = json.dumps(self.to_dict(), indent=indent, ensure_ascii=False)
+        if path:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(text)
+        return text
+
+    def to_pandapower(self, net):
+        """Apply the validated topology to a pandapower network.
+
+        Returns a copy of `net` with each line switched in or out of service
+        to match the result. Lines are matched by their end buses. Connections
+        in the result that have no corresponding line in `net` cannot be
+        created without line parameters; they are returned in `missing` so
+        the operator can add them.
+        """
+        import copy
+        out = copy.deepcopy(net)
+        wanted = {frozenset(e) for e in self.topology.edges()}
+        seen = set()
+        for i, r in out.line.iterrows():
+            e = frozenset((int(r["from_bus"]), int(r["to_bus"])))
+            out.line.at[i, "in_service"] = e in wanted
+            seen.add(e)
+        missing = [tuple(e) for e in wanted - seen]
+        return out, missing
+
 
 def _distance(voltage, angle, nodes, smooth):
     src = angle if angle is not None else voltage

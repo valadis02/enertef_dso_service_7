@@ -16,6 +16,7 @@ from .blind import reconstruct
 from .validation import validate_topology, flag_suspicious_edges
 from .metrics import evaluate
 from .distance import electrical_distance
+from .monitoring import monitor
 
 __all__ = [
     "reconstruct",
@@ -23,4 +24,5 @@ __all__ = [
     "flag_suspicious_edges",
     "evaluate",
     "electrical_distance",
+    "monitor",
 ]
