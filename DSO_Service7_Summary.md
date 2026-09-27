@@ -1,8 +1,9 @@
 # DSO Service 7 — AI-based Grid Topology Identification
 ## Αναφορά αποτελεσμάτων
 
-EnerTEF TEF DSO node · D2.2 §2.6.7
-Repo: https://github.com/valadis02/enertef_dso_service_7
+**Repository: https://github.com/valadis02/enertef_dso_service_7**
+
+EnerTEF TEF DSO node · D2.2 §2.6.7 · Χρυσοβαλάντης Τσιρινδάνης, DSS Lab ΕΜΠ
 
 ---
 

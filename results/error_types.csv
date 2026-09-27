@@ -1,0 +1,7 @@
+feeder,error_type,documented,validated
+1-LV-semiurb4,open switch,0.857,1.0
+1-LV-semiurb4,mixed,0.857,1.0
+1-LV-semiurb4,local reroute,0.857,0.929
+1-LV-urban6,open switch,0.842,1.0
+1-LV-urban6,mixed,0.842,0.965
+1-LV-urban6,local reroute,0.842,0.912

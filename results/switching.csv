@@ -1,0 +1,10 @@
+feeder,event,opened,tie,detected,correct,delay_h,false_alarms,windows_before,alerts_total
+1-LV-semiurb4,0,"(21, 27)","(6, 4)",True,False,21.0,1,12,3
+1-LV-semiurb4,1,"(1, 31)","(5, 31)",True,False,12.0,1,12,3
+1-LV-semiurb4,2,"(20, 14)","(20, 28)",True,True,3.0,1,12,3
+1-LV-urban6,0,"(0, 34)","(32, 27)",True,False,9.0,2,12,4
+1-LV-urban6,1,"(5, 19)","(5, 28)",True,True,12.0,1,12,4
+1-LV-urban6,2,"(7, 1)","(17, 7)",True,True,6.0,1,12,6
+1-LV-rural2,0,"(78, 53)","(18, 53)",True,True,0.0,2,12,4
+1-LV-rural2,1,"(21, 23)","(2, 94)",True,True,27.0,0,12,3
+1-LV-rural2,2,"(90, 56)","(56, 34)",True,False,6.0,1,12,2

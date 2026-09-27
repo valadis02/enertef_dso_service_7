@@ -1,5 +1,7 @@
 # DSO Service 7 — AI-based Grid Topology Identification
 
+**Repository: https://github.com/valadis02/enertef_dso_service_7**
+
 EnerTEF TEF DSO node · D2.2 §2.6.7
 
 Validates the topology recorded in a DSO's asset database against
