@@ -1,3 +1,7 @@
 __pycache__/
 *.pyc
 .venv/
+combined_method/work/
+combined_method/far_west/data/case_ACTIVSg2000.m
+combined_method/far_west/data/activsg2000_pp.json
+combined_method/far_west/data/ts/
