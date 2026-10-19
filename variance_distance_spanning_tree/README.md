@@ -16,13 +16,13 @@ pip install -r requirements.txt
 ## Use
 
 ```python
-from topology import data, validate_topology
+from topology import data, variance_distance_spanning_tree
 
 net = data.load_simbench("1-LV-semiurb4--0-sw")
 V, A = data.simulate_simbench(net)
 V, A = data.add_meter_noise(V, A, "class_0.5+angle")
 
-result = validate_topology(
+result = variance_distance_spanning_tree(
     V, documented_topology, angle=A,
     possible_connections=switch_list,   # omit for flagging only
 )

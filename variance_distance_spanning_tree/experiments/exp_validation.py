@@ -5,7 +5,7 @@ SimBench feeders, with and without phase angle.
 """
 
 from _common import ALL, ERROR_RATE, load, save, short
-from topology import data, errors, validate_topology, evaluate
+from topology import data, errors, variance_distance_spanning_tree, evaluate
 
 
 def main():
@@ -19,7 +19,7 @@ def main():
 
         for meters in ["class_0.5", "class_0.5+angle"]:
             Vn, An = data.add_meter_noise(V, A, meters)
-            res = validate_topology(Vn, documented, nodes, An,
+            res = variance_distance_spanning_tree(Vn, documented, nodes, An,
                                     possible_connections=candidates)
             m = evaluate(res.topology, tg)
             rows.append({

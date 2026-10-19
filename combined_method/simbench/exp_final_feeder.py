@@ -1,11 +1,8 @@
-"""Final method + ablations for the assignment use cases (voltage only):
-  phase  - use case 3 (phase identification)
-  feeder - use case 2 (customer-feeder assignment)
-usage: exp_final_assign.py phase|feeder
+"""Use case 2 (customer-feeder assignment): documented, Variance-Distance Spanning
+Tree, random forest (Liu) and the combination.
 Liu only: forest on correlation features + documentation, highest probability.
-Ours only: no forest; physics refinement started from the documentation.
-Combined: forest on all features -> highest probability -> physics refinement,
-only for customers the forest is unsure about (highest p < 0.95)."""
+Combined: forest on all features -> highest probability -> power-balance
+refinement for customers with highest p < ASSIGN_GATE (0.95; 1.01 = every customer)."""
 import os as _os, sys as _sys
 _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), ".."))
 from paths import TOPO, SB_CODE, SB_WORK, FW_CODE, FW_WORK, FW_DATA  # noqa: E402
@@ -17,11 +14,11 @@ from sklearn.ensemble import RandomForestClassifier
 
 sys.path.insert(0, SB_CODE)
 sys.path.insert(0, TOPO)
-GATE_HI = 0.95
+GATE_HI = float(__import__('os').environ.get('ASSIGN_GATE', '0.95'))   # 1.01 = refine every customer
 
 
 def vt_assign(V, doc, k=5):
-    """validate_topology principle for assignments: variance distance of smoothed
+    """variance_distance_spanning_tree principle for assignments: variance distance of smoothed
     voltages; each customer takes the majority documented label of its k
     electrically closest customers."""
     Vs = pd.DataFrame(V).rolling(15, center=True, min_periods=1).mean().values
@@ -41,39 +38,6 @@ def rf_lofo(X, cols, group, K):
         clf.fit(X.loc[tr, cols], X.loc[tr, "label"]); p[te] = clf.predict_proba(X.loc[te, cols])[:, 1]
     X = X.assign(p=p)
     return {cs: g.sort_values(["i", g.columns[1]]).p.values.reshape(-1, K(cs)) for cs, g in X.groupby("case")}
-
-
-def phase():
-    import exp_phase as E
-    X, B = E.main()
-    LIU = ["sub_corr", "sub_rank", "peer_top3", "peer_mean", "doc"]
-    FIN = ["sub_corr", "sub_rank", "peer_top3", "peer_mean", "resid", "resid_rank", "doc"]
-    X = X[["i", "ph"] + [c for c in X.columns if c not in ("i", "ph")]]
-
-    def refine(c, Zc, lab, free, margin=0.05, rounds=6):
-        lab = lab.copy()
-        for _ in range(rounds):
-            R = E.physics_resid(c, Zc, lab)
-            cur = R[np.arange(len(lab)), lab]
-            move = free & (cur > (1 + margin) * R.min(1))
-            if not move.any():
-                break
-            lab[move] = R.argmin(1)[move]
-        return lab
-
-    PL = rf_lofo(X, LIU, "feeder", lambda cs: 3); PF = rf_lofo(X, FIN, "feeder", lambda cs: 3)
-    rows = []
-    for cs in B.case:
-        c, Zc = E.CASES[cs]; t = c["truth"]
-        allfree = np.ones(len(t), bool)
-        dec = PF[cs].argmax(1)
-        rows.append(dict(case=cs, documented=(c["doc"] == t).mean(),
-                         validate_topology=(vt_assign(c["Vc"], c["doc"]) == t).mean(),
-                         liu_only=(PL[cs].argmax(1) == t).mean(),
-                         ours_only=(refine(c, Zc, c["doc"], allfree) == t).mean(),
-                         combined_steps_1_3=(dec == t).mean(),
-                         combined=(refine(c, Zc, dec, PF[cs].max(1) < GATE_HI) == t).mean()))
-    return pd.DataFrame(rows)
 
 
 def feeder():
@@ -139,7 +103,7 @@ def feeder():
     for cs, (truth, doc, Pc, head, K, Vrel) in cases.items():
         dec = PF[cs].argmax(1)
         out.append(dict(case=cs, documented=(doc == truth).mean(),
-                        validate_topology=(vt_assign(Vrel, doc) == truth).mean(), liu_only=(PL[cs].argmax(1) == truth).mean(),
+                        variance_distance_spanning_tree=(vt_assign(Vrel, doc) == truth).mean(), liu_only=(PL[cs].argmax(1) == truth).mean(),
                         ours_only=(correct(Pc, head, doc, K, np.ones(len(doc), bool)) == truth).mean(),
                         combined_steps_1_3=(dec == truth).mean(),
                         combined=(correct(Pc, head, dec, K, PF[cs].max(1) < GATE_HI) == truth).mean()))
@@ -147,8 +111,8 @@ def feeder():
 
 
 if __name__ == "__main__":
-    which = sys.argv[1]
-    R = phase() if which == "phase" else feeder()
+    which = "feeder"
+    R = feeder()
     R.to_csv(f"{SB_WORK}/final_{which}" + ("_month" if __import__("os").environ.get("MONTH") == "1" else "") + ".csv", index=False)
     cols = [c for c in R.columns if c != "case"]
     print(which, len(R), "cases"); print((100 * R[cols].mean()).round(2).to_string())

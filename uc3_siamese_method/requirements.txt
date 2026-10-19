@@ -1,0 +1,3 @@
+torch==2.14.1
+PyWavelets==1.10.0
+# and everything in ../combined_method/requirements.txt

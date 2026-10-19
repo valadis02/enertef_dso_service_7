@@ -93,7 +93,7 @@ def run(proto, lo, hi):
         ours = F.refine(base, c["S"][sub], c["Vm"][sub], max_iter=6, top=0)
         json.dump(dict(case=c["X"].case.iloc[0], truth=c["truth"].tolist(), doc=c["doc"].tolist(),
                        liu_only=liu.tolist(), ours_only=ours.tolist(), combined_steps_1_3=dec.tolist(),
-                       validate_topology=c["X"]["kruskal_in"].values.astype(int).tolist(),
+                       variance_distance_spanning_tree=c["X"]["kruskal_in"].values.astype(int).tolist(),
                        combined=comb.tolist()), open(path, "w"))
 
 
@@ -101,7 +101,7 @@ def summary(proto):
     rows = []
     for f in sorted(glob.glob(f"{OUT}/{proto}_*.json")):
         r = json.load(open(f)); t = np.array(r["truth"]); d = np.array(r["doc"])
-        for m in ("doc", "validate_topology", "liu_only", "ours_only", "combined_steps_1_3", "combined"):
+        for m in ("doc", "variance_distance_spanning_tree", "liu_only", "ours_only", "combined_steps_1_3", "combined"):
             s = np.array(r[m])
             rows.append(dict(method=m, acc=(s == t).mean(), exact=(s == t).all(),
                              out_found=((s == 0) & (t == 0)).sum(), out_total=(t == 0).sum(),

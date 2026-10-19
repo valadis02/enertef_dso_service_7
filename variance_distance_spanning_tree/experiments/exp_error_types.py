@@ -6,7 +6,7 @@ candidate parents are electrically almost identical.
 """
 
 from _common import SMALL, ERROR_RATE, load, save, short
-from topology import data, errors, validate_topology, evaluate
+from topology import data, errors, variance_distance_spanning_tree, evaluate
 
 KINDS = {
     "open switch": errors.open_switch,
@@ -25,7 +25,7 @@ def main():
         for name, make_errors in KINDS.items():
             documented = make_errors(tg, n_err)
             candidates = errors.possible_connections(tg, documented)
-            res = validate_topology(Vn, documented, nodes, An,
+            res = variance_distance_spanning_tree(Vn, documented, nodes, An,
                                     possible_connections=candidates)
             rows.append({
                 "feeder": short(code), "error_type": name,

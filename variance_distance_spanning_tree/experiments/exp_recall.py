@@ -6,7 +6,7 @@ below that, correcting does net harm.
 """
 
 from _common import SMALL, ERROR_RATE, load, save, short
-from topology import data, errors, validate_topology, evaluate
+from topology import data, errors, variance_distance_spanning_tree, evaluate
 
 RECALLS = [1.0, 0.75, 0.5, 0.25, 0.0]
 
@@ -22,7 +22,7 @@ def main():
 
         for r in RECALLS:
             candidates = errors.possible_connections(tg, documented, recall=r)
-            res = validate_topology(Vn, documented, nodes, An,
+            res = variance_distance_spanning_tree(Vn, documented, nodes, An,
                                     possible_connections=candidates)
             acc = evaluate(res.topology, tg)["reconstruction_accuracy"]
             rows.append({

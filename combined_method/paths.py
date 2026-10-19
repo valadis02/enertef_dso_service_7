@@ -10,7 +10,7 @@ import os
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(ROOT)
-TOPO = os.path.join(REPO, "validate_topology")          # the original `topology` package
+TOPO = os.path.join(REPO, "variance_distance_spanning_tree")          # the original `topology` package
 SB_CODE = os.path.join(ROOT, "simbench")
 FW_CODE = os.path.join(ROOT, "far_west")
 WORK = os.environ.get("CM_WORK", os.path.join(ROOT, "work"))

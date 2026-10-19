@@ -47,9 +47,9 @@ case (§3 της αναφοράς), όχι ως λειτουργία του serv
 ### Βήμα 2 — Service API με confidence και alerts · *1 μέρα*
 
 ```python
-from topology import validate_topology
+from topology import variance_distance_spanning_tree
 
-result = validate_topology(
+result = variance_distance_spanning_tree(
     measurements,               # τάση, προαιρετικά γωνία
     documented_topology,        # από το asset DB
     possible_connections=None,  # φυσικά υπαρκτές γραμμές/διακόπτες

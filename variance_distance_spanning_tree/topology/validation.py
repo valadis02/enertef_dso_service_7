@@ -108,7 +108,7 @@ def _confidence(D, idx, edges):
     return {frozenset(e): float(s) for e, s in zip(edges, scores)}
 
 
-def validate_topology(voltage, documented, nodes=None, angle=None,
+def variance_distance_spanning_tree(voltage, documented, nodes=None, angle=None,
                       possible_connections=None, smooth_window=15):
     """Validate, and where possible correct, a documented topology.
 
@@ -174,6 +174,6 @@ def validate_topology(voltage, documented, nodes=None, angle=None,
 def flag_suspicious_edges(voltage, documented, k, nodes=None, angle=None,
                           smooth_window=15):
     """Return the k documented edges the measurements support least."""
-    res = validate_topology(voltage, documented, nodes, angle,
+    res = variance_distance_spanning_tree(voltage, documented, nodes, angle,
                             possible_connections=None, smooth_window=smooth_window)
     return [a["edge"] for a in res.alerts[:k]]

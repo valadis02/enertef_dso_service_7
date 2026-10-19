@@ -90,7 +90,7 @@ def run(lo, hi):
         comb = F.refine(dec, c["S"][sub], c["Vm"][sub], p=P["final"][n], gate=EF.GATE, top=0, max_iter=6)
         ours = F.refine(c["doc"], c["S"][sub], c["Vm"][sub], top=0, max_iter=6)
         json.dump(dict(truth=c["truth"].tolist(), doc=c["doc"].tolist(), liu_only=liu.tolist(),
-                       validate_topology=c["X"]["kruskal_in"].values.astype(int).tolist(),
+                       variance_distance_spanning_tree=c["X"]["kruskal_in"].values.astype(int).tolist(),
                        ours_only=ours.tolist(), combined_steps_1_3=dec.tolist(), combined=comb.tolist()),
                   open(path, "w"))
 
@@ -99,7 +99,7 @@ def summary():
     rows = []
     for f in sorted(glob.glob(f"{OUT}/res_*.json")):
         r = json.load(open(f)); t = np.array(r["truth"])
-        for m in ("doc", "validate_topology", "liu_only", "ours_only", "combined_steps_1_3", "combined"):
+        for m in ("doc", "variance_distance_spanning_tree", "liu_only", "ours_only", "combined_steps_1_3", "combined"):
             s = np.array(r[m]); to = t == 0
             rows.append(dict(method=m, acc=(s == t).mean(), open_found=((s == 0) & to).sum() / to.sum(),
                              false_out=((s == 0) & ~to).sum(), exact=(s == t).all()))

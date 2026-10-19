@@ -133,9 +133,9 @@ if __name__ == "__main__":
         G = nx.Graph(); G.add_nodes_from(c["nodes"]); G.add_edges_from(map(tuple, c["fixed"]))
         G.add_edges_from(tuple(e) for e, q in zip(edges, P["liu"][ix]) if q > 0.5)
         r["liu_only"] = share(G, c["tg"])
-        # ours only: steps 1, 3, 4 without the forest: validate_topology (Kruskal on the
+        # ours only: steps 1, 3, 4 without the forest: variance_distance_spanning_tree (Kruskal on the
         # variance distance) -> physics refinement
-        r["validate_topology"] = share(c["base"], c["tg"])
+        r["variance_distance_spanning_tree"] = share(c["base"], c["tg"])
         r["ours_only"] = share(refine(c["base"], cands, c), c["tg"])
         # combined
         Gd = L.decode(c["nodes"], c["fixed"], edges, P["final"][ix])

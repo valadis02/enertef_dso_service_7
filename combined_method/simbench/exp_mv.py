@@ -7,7 +7,7 @@ the errors are, unlike the decoy protocol of section 4.2).
 Meters at every MV bus (secondary substations): voltage Class 0.5, optionally
 angle 0.01 deg; P, Q injections with 1% error.
 
- 1. features: variance distance, validate_topology result, residual of the
+ 1. features: variance distance, variance_distance_spanning_tree result, residual of the
     linearised AC model when the line's status is flipped, documented status;
  2. ML: gradient boosting (or random forest, as in Liu et al.),
     (a) leave-one-network-out, (b) same network, other configurations (GroupKFold);
@@ -31,7 +31,7 @@ sys.path.insert(0, SB_CODE)
 sys.path.insert(0, TOPO)
 import exp_lv_pipeline as L  # noqa: E402
 from mv_sim import MV_NETS, OUT, mv_model  # noqa: E402
-from topology import validate_topology  # noqa: E402
+from topology import variance_distance_spanning_tree  # noqa: E402
 from topology.data import add_meter_noise  # noqa: E402
 from topology.distance import electrical_distance  # noqa: E402
 
@@ -174,7 +174,7 @@ def case(code, info, c, j, meters):
     nodes, Vm, Va, P, Q = augment(info, nodes, Vm, Va, P, Q)
     E = info["edges"]; cand = info["cand"]
     docG = graph_of(nodes, info, doc)
-    base = validate_topology(Vn, graph_of(nodes_m, info, doc), nodes_m, An, possible_connections=[E[k] for k in cand])
+    base = variance_distance_spanning_tree(Vn, graph_of(nodes_m, info, doc), nodes_m, An, possible_connections=[E[k] for k in cand])
     base_e = {frozenset(e) for e in base.topology.edges()}
     Dm, dn = electrical_distance((An if An is not None else Vn)[nodes_m], 15)
     ix = {n: k for k, n in enumerate(dn)}
@@ -269,7 +269,7 @@ if __name__ == "__main__":
     out = []
     out.append(summarize("documented (normal open points)",
                          [metrics(c["doc"], c["truth"], c["doc"]) for c in ctx.values()]))
-    out.append(summarize("variance distance + Kruskal (validate_topology)",
+    out.append(summarize("variance distance + Kruskal (variance_distance_spanning_tree)",
                          [metrics(c["base"], c["truth"], c["doc"]) for c in ctx.values()]))
     out.append(summarize("physics only: greedy branch exchange on residual",
                          [metrics(c["greedy"], c["truth"], c["doc"]) for c in ctx.values()]))

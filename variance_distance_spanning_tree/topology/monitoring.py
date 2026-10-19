@@ -20,7 +20,7 @@ for `persistence` consecutive windows, which suppresses one-off noise.
 from collections import Counter
 from dataclasses import dataclass, field
 
-from .validation import validate_topology
+from .validation import variance_distance_spanning_tree
 
 
 @dataclass
@@ -60,7 +60,7 @@ def monitor(voltage, documented, possible_connections, nodes=None, angle=None,
         sl = slice(end - window, end)
         V = voltage.iloc[sl].reset_index(drop=True)
         A = angle.iloc[sl].reset_index(drop=True) if angle is not None else None
-        out = validate_topology(V, documented, nodes, A,
+        out = variance_distance_spanning_tree(V, documented, nodes, A,
                                 possible_connections=possible_connections,
                                 smooth_window=smooth_window)
         current = frozenset(frozenset(e) for e in out.topology.edges())

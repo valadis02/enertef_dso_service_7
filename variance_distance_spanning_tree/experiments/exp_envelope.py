@@ -6,7 +6,7 @@ the gain over doing nothing grows with the error rate.
 """
 
 from _common import SMALL, load, save, short
-from topology import data, errors, validate_topology, evaluate
+from topology import data, errors, variance_distance_spanning_tree, evaluate
 
 ERROR_RATES = [0.05, 0.10, 0.15, 0.25, 0.40]
 DECOYS = [0.0, 1.0, 3.0, 8.0]
@@ -26,7 +26,7 @@ def main():
 
             for d in DECOYS:
                 candidates = errors.possible_connections(tg, documented, decoy_factor=d)
-                res = validate_topology(Vn, documented, nodes, An,
+                res = variance_distance_spanning_tree(Vn, documented, nodes, An,
                                         possible_connections=candidates)
                 rows.append({
                     "feeder": short(code), "error_rate": f"{er:.0%}", "decoys": f"x{d:g}",

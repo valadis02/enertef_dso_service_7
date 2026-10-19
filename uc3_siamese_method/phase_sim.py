@@ -12,7 +12,7 @@ is 3S p.u. on its phase. Validated against the balanced pandapower run.
 Injections are the cached SimBench net bus injections (sb_cache).
 """
 import os as _os, sys as _sys
-_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), ".."))
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "combined_method"))
 from paths import TOPO, SB_CODE, SB_WORK, FW_CODE, FW_WORK, FW_DATA  # noqa: E402
 import numpy as np
 import networkx as nx

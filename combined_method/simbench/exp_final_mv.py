@@ -115,7 +115,7 @@ if __name__ == "__main__":
         ours = M.greedy_exchange(nodes, info, cx["base"], Pm, Qm, Vm, None, adaptive=True)
         dec = M.decode(info, nodes, P["final"][ix], cand)
         comb = gated_exchange(nodes, info, dec, Pm, Qm, Vm, P["final"][ix], cand)
-        for name, s in (("documented", cx["doc"]), ("liu_only", liu), ("validate_topology", cx["base"]),
+        for name, s in (("documented", cx["doc"]), ("liu_only", liu), ("variance_distance_spanning_tree", cx["base"]),
                         ("ours_only", ours), ("combined_steps_1_3", dec), ("combined", comb)):
             rows.append(dict(case=cs, method=name, **metrics(s, cx["truth"], cx["doc"])))
     tag = f"{arg}_{lo}" if len(sys.argv) > 2 else arg

@@ -3,6 +3,7 @@
     python run_all.py --stage all --workers 2
     python run_all.py --stage simbench          # LV + MV only (a few hours)
     python run_all.py --stage far_west          # needs the ACTIVSg2000 inputs, see README
+    python run_all.py --stage personalized      # use case 2*, personalized customer profiles
     python run_all.py --stage tables            # print the result table from work/
 
 Each stage skips work whose output already exists, so an interrupted run can
@@ -49,11 +50,11 @@ def simbench(w):
     print("[SimBench LV] features (use case 1)", flush=True)
     parallel([(["exp_lv_pipeline.py", "class_0.5", str(i)], SB_CODE) for i in range(len(LV))], w)
     run(["exp_lv_pipeline.py", "class_0.5", "combine"], SB_CODE)
-    print("[SimBench LV] use case 1: validate_topology / random forest / combination", flush=True)
+    print("[SimBench LV] use case 1: variance_distance_spanning_tree / random forest / combination", flush=True)
     run(["exp_final_lv.py", "0"], SB_CODE)                    # trains the forests once
     parallel([(["exp_final_lv.py", str(i)], SB_CODE) for i in range(1, len(LV))], w)
-    print("[SimBench LV] use cases 2 and 3", flush=True)
-    parallel([(["exp_final_assign.py", "phase"], SB_CODE), (["exp_final_assign.py", "feeder"], SB_CODE)], w)
+    print("[SimBench LV] use case 2", flush=True)
+    run(["exp_final_feeder.py"], SB_CODE)
     print("[SimBench MV] one month of power flow, 16 switching configurations per network", flush=True)
     parallel([(["mv_sim.py", "100000"], SB_CODE, dict(ENV, NETS=str(i))) for i in range(len(MV))], w)
     print("[SimBench MV] features", flush=True)
@@ -93,17 +94,30 @@ def far_west(w):
              [(["exp_final_fw7.py", "run", str(a), str(a + 6)], FW_CODE) for a in range(0, 66, 6)], w)
 
 
+def personalized(w):
+    """SimBench LV with personalized customer profiles (PERSONALIZED_PROFILES.md):
+    use case 2 variant. Use case 3 (siamese) is reproduced by ../uc3_siamese_method/run.py."""
+    work = os.environ.get("CM_WORK_PERSONALIZED", os.path.join(HERE, "work_personalized"))
+    env = dict(ENV, CM_WORK=work, INDIV="1")
+    print("[SimBench LV, personalized profiles] one month of power flow", flush=True)
+    parallel([(["sb_sim.py", c], SB_CODE, env) for c in LV], w)
+    print("[SimBench LV, personalized profiles] use case 2, refinement on every customer", flush=True)
+    run(["exp_final_feeder.py"], SB_CODE, dict(env, ASSIGN_GATE="1.01"))
+
+
 def tables():
     run(["make_tables.py"], HERE)
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--stage", default="all", choices=["all", "simbench", "far_west", "tables"])
+    ap.add_argument("--stage", default="all", choices=["all", "simbench", "far_west", "personalized", "tables"])
     ap.add_argument("--workers", type=int, default=2)
     a = ap.parse_args()
     if a.stage in ("all", "simbench"):
         simbench(a.workers)
     if a.stage in ("all", "far_west"):
         far_west(a.workers)
+    if a.stage in ("all", "personalized"):
+        personalized(a.workers)
     tables()

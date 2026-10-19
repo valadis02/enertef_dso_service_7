@@ -2,8 +2,8 @@
 with the section 4.2 protocol: documented topology with 15% mixed errors,
 candidate set = real discrepancies + as many correctly documented decoys.
 
- 1. Features per candidate edge: variance distance (as validate_topology),
-    whether validate_topology keeps it, residual improvement of the
+ 1. Features per candidate edge: variance distance (as variance_distance_spanning_tree),
+    whether variance_distance_spanning_tree keeps it, residual improvement of the
     linearised AC model (needs P, Q), documented status.
  2. ML: gradient boosting, leave-one-feeder-out (a feeder is never seen in training).
  3. Decoding: radial Kruskal on the probabilities, trusted edges fixed.
@@ -22,7 +22,7 @@ import simbench as sb
 from sklearn.ensemble import HistGradientBoostingClassifier
 
 sys.path.insert(0, TOPO)
-from topology import errors, evaluate, validate_topology  # noqa: E402
+from topology import errors, evaluate, variance_distance_spanning_tree  # noqa: E402
 from topology.data import topology_of, add_meter_noise, SIMBENCH_FEEDERS  # noqa: E402
 from topology.distance import electrical_distance  # noqa: E402
 
@@ -91,7 +91,7 @@ def case_features(code, net, tg, d, seed, meters):
     Va = np.deg2rad(An.values) if An is not None else None
     sv, sa = (0.0025, np.deg2rad(0.01))
 
-    base = validate_topology(Vn, doc, nodes, An, possible_connections=cands)
+    base = variance_distance_spanning_tree(Vn, doc, nodes, An, possible_connections=cands)
     Dm, dn = electrical_distance((An if An is not None else Vn)[nodes], 15)
     idx = {n: k for k, n in enumerate(dn)}
     doc_e = {frozenset(e) for e in doc.edges()}
