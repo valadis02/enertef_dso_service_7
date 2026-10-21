@@ -1,0 +1,9 @@
+# versions used for the reported results (Python 3.13)
+numpy==2.4.6
+pandas==2.3.3
+scipy==1.18.1
+scikit-learn==1.9.1
+networkx==3.6.1
+pandapower==3.5.6
+simbench==1.6.3
+numba==0.68.0
