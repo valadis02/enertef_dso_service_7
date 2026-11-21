@@ -2,6 +2,7 @@
 
 Builds on the random forest of Dong Liu (TU Delft) and adds the physics of the network: Variance-Distance Spanning Tree, the power-flow residual, radial constraints and a physics refinement. The same four steps for all four D2.2 use cases, on SimBench (LV, MV) and on the ACTIVSg2000 Far West transmission area. Use case 3 also has the siamese method of Dong Liu in [`../uc3_siamese_method`](../uc3_siamese_method).
 
+- [`FINAL_METHOD.md`](FINAL_METHOD.md) — **final method** (XGBoost or TabFM, neighbourhood features, refinement without gate, second pass): results against the original method and how to run it
 - [`RESULTS.md`](RESULTS.md) — all results (70 / 80 / 90% correct documentation, realism checks), minimum requirements, limits
 - [`METHOD.md`](METHOD.md) — full description of the method and of the evaluation protocol
 - [`PERSONALIZED_PROFILES.md`](PERSONALIZED_PROFILES.md) — SimBench with personalized customer profiles, used everywhere

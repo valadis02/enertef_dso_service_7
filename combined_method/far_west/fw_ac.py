@@ -1,4 +1,5 @@
-"""Far West without angles: same unified method as SimBench.
+"""Far West: same unified method as SimBench; voltage magnitudes only by default,
+with PMU angles at every bus when ANGLE=<sigma in degrees> is set.
 
 Minimum requirements (same as SimBench): documented topology ~85% correct,
 branch impedances from the asset DB, |V| Class 0.5 at every bus, P and Q
@@ -33,6 +34,9 @@ import pipeline as PL  # noqa: E402  (decode, connectivity, CAND, INSIDE)
 DATA = FW_DATA + "/"
 FW = list(range(1001, 1092)); POS = {b: i for i, b in enumerate(FW)}
 N = len(FW); SV = 0.0025
+SA = float(os.environ.get("ANGLE", "0"))            # PMU angle noise in degrees; 0 = no angle measurement
+ANG = SA > 0
+SAR = np.deg2rad(SA) if ANG else 1.0
 
 
 def ac_model():
@@ -175,7 +179,8 @@ def flip_vm(status, V, Jo, k, S, Vm, iters=4):
     if refs_of(t) != refs_of(status):
         if t[k] == 0 and not island_has_tie(t):
             return None                                  # buses left without supply: infeasible
-        return np.abs(solve(t, S, Vm, iters=12, V0=None, inverse=False)[0])   # islands change: fresh DC start
+        Vf = solve(t, S, Vm, iters=12, V0=None, inverse=False)[0]           # islands change: fresh DC start
+        return Vf if ANG else np.abs(Vf)
     Y = ybus(t); n = len(o)
     i, j, y, b = FI[k], TI[k], YS[k], BH[k]
     sign = 1.0 if t[k] == 1 else -1.0
@@ -193,13 +198,13 @@ def flip_vm(status, V, Jo, k, S, Vm, iters=4):
     K = Jinv[:, :, R]
     Mr = np.eye(len(R))[None] + Jinv[:, R][:, :, R] @ D
     th = np.angle(V).copy(); vm = np.abs(V).copy()
-    best = np.full(len(V), np.inf); out = vm.copy()
+    best = np.full(len(V), np.inf); out = vm.copy(); out_th = th.copy()
     for _ in range(iters + 1):
         Vc = vm * np.exp(1j * th)
         F = (Vc * np.conj(Vc @ Y.T) - S)[:, o]
         err = np.abs(F).max(1)
         better = err < best                               # keep, per hour, the best iterate (guards divergence)
-        out[better] = vm[better]; best[better] = err[better]
+        out[better] = vm[better]; out_th[better] = th[better]; best[better] = err[better]
         if _ == iters:
             break
         yv = (Jinv @ np.concatenate([F.real, F.imag], 1)[:, :, None])[:, :, 0]
@@ -207,15 +212,37 @@ def flip_vm(status, V, Jo, k, S, Vm, iters=4):
         dx = np.clip(yv - (K @ (D @ corr))[:, :, 0], -0.5, 0.5)
         dx[~np.isfinite(dx)] = 0
         th[:, o] -= dx[:, :n]; vm[:, o] -= dx[:, n:]
-    return out
+    return out * np.exp(1j * out_th) if ANG else out
 
 
-def resid(vm_pred, Vm, mask=None, s=SV):
+def _islands(status):
+    import networkx as nx
+    G = nx.Graph(); G.add_nodes_from(range(N)); G.add_edges_from((FI[k], TI[k]) for k in np.where(status == 1)[0])
+    return [np.array(sorted(c)) for c in nx.connected_components(G)]
+
+
+def resid(pred, Vm, mask=None, s=SV, Va=None, st=None):
+    """Residual of the |V| fluctuations; with angles (pred complex, Va given) plus the
+    angle residual, offsets removed per island and per meter."""
+    th = None
+    if np.iscomplexobj(pred):
+        th, pred = np.angle(pred), np.abs(pred)
     if mask is not None:
-        vm_pred, Vm = vm_pred[mask], Vm[mask]
-    r = Vm - vm_pred
+        pred, Vm = pred[mask], Vm[mask]
+        if th is not None:
+            th = th[mask]
+        if Va is not None:
+            Va = Va[mask]
+    r = Vm - pred
     r = r - r.mean(1, keepdims=True); r = r - r.mean(0, keepdims=True)
-    return ((r / s) ** 2).sum()
+    J = ((r / s) ** 2).sum()
+    if th is not None and Va is not None:
+        ra = Va - th
+        for c in (_islands(st) if st is not None else [np.arange(N)]):
+            ra[:, c] -= ra[:, c].mean(1, keepdims=True)    # each island has its own angle reference
+        ra = ra - ra.mean(0, keepdims=True)
+        J += ((ra / SAR) ** 2).sum()
+    return J
 
 
 def connect(status):
@@ -239,49 +266,58 @@ def measurements(d, rng):
     P, Q, Ft, Qt = noisy(d["Pinj"]), noisy(d["Qinj"]), noisy(d["Ftie"]), noisy(d["Qtie"])
     S = (P + 1j * Q) / 100.0
     np.add.at(S.T, TIEBUS, -(Ft + 1j * Qt).T / 100.0)          # flow leaving the area = load at boundary bus
-    return Vm[:, AREA], S[:, AREA]
+    Va = None
+    if ANG:                                                     # PMU angles, relative to the area reference bus
+        rng_a = np.random.default_rng(zlib.crc32(np.ascontiguousarray(d["A"]).tobytes()))   # own stream: V, P, Q noise and
+        Va = np.deg2rad(d["A"] + rng_a.normal(0, SA, d["A"].shape))[:, AREA]                 # documentation stay as without angles
+        Va = Va - Va[:, [REF]]
+    return Vm[:, AREA], S[:, AREA], Va
 
 
-def features(doc, Vm, S):
+def features(doc, Vm, S, Va=None):
     dv = Vm[:, FI] - Vm[:, TI]
     if MONTH:                                          # physics residual on every third hour of the month (speed)
         Vm, S = Vm[::3], S[::3]
+        Va = None if Va is None else Va[::3]
+    P = (lambda V: V) if ANG else np.abs
     base = doc.copy()                                  # islands get their own reference bus
     V, Jinv, conv = solve(base, S, Vm)
     if conv.mean() < 0.5:                              # documented model not solvable: reference = all in service
         base = np.ones(E, int)
         V, Jinv, conv = solve(base, S, Vm)
-    J0 = resid(np.abs(V), Vm, conv)
+    J0 = resid(P(V), Vm, conv, Va=Va, st=base)
     cg = np.zeros(E)                                   # gain in solvable hours (exact solves only)
     def gain(k):
         if base[k] == 0:                                # few elements out: exact warm-started solve
             t = base.copy(); t[k] = 1
             Vt, _, ct = solve(t, S, Vm, V0=V, inverse=False)
             cg[k] = ct.mean() - conv.mean()
-            return (J0 - resid(np.abs(Vt), Vm, conv & ct)) / J0
+            return (J0 - resid(P(Vt), Vm, conv & ct, Va=Va, st=t)) / J0
         vm = flip_vm(base, V, Jinv, k, S, Vm)
-        return -1.0 if vm is None else (J0 - resid(vm, Vm, conv)) / J0
+        t = base.copy(); t[k] ^= 1
+        return -1.0 if vm is None else (J0 - resid(vm, Vm, conv, Va=Va, st=t)) / J0
     dJ = np.array([gain(k) for k in range(E)])
     return pd.DataFrame({"log_var_dist": np.log10(dv.std(0) + 1e-12), "dJ": dJ, "doc": doc, "conv_gain": cg,
                          "base_in": base, "doc_solvable": int((base == doc).all())})
 
 
-def refine(st, S, Vm, min_gain=0.01, max_iter=15, p=None, gate=(0.2, 0.8), top=0):
+def refine(st, S, Vm, min_gain=0.01, max_iter=15, p=None, gate=(0.2, 0.8), top=0, Va=None):
     """Physics refinement: single switch changes, and when none helps, exchanges
     (one element in, one out) among the top candidates of each kind, as in the
     MV branch exchange. Accepted while the exact residual drops by > min_gain.
     With p (forest probabilities), only elements with gate[0] < p < gate[1] move."""
     st = st.copy(); V = None
+    P = (lambda V: V) if ANG else np.abs
     free = np.ones(E, bool) if p is None else (p > gate[0]) & (p < gate[1])
 
     def exact_gain(t, J0, conv, V):
         Vt, _, ct = solve(t, S, Vm, V0=V, inverse=False)
         if ct[conv].mean() < 0.95:
             return -np.inf
-        return (J0 - resid(np.abs(Vt), Vm, conv & ct)) / J0
+        return (J0 - resid(P(Vt), Vm, conv & ct, Va=Va, st=t)) / J0
 
     for _ in range(max_iter):
-        V, Jinv, conv = solve(st, S, Vm, V0=V); J0 = resid(np.abs(V), Vm, conv)
+        V, Jinv, conv = solve(st, S, Vm, V0=V); J0 = resid(P(V), Vm, conv, Va=Va, st=st)
         g = np.full(E, -np.inf)
         for k in np.where(free)[0]:
             t = st.copy(); t[k] ^= 1
@@ -289,7 +325,7 @@ def refine(st, S, Vm, min_gain=0.01, max_iter=15, p=None, gate=(0.2, 0.8), top=0
                 continue
             vm = flip_vm(st, V, Jinv, k, S, Vm)
             if vm is not None:
-                g[k] = (J0 - resid(vm, Vm, conv)) / J0
+                g[k] = (J0 - resid(vm, Vm, conv, Va=Va, st=t)) / J0
         moved = False
         k = int(np.argmax(g))
         if g[k] > min_gain:
@@ -380,13 +416,13 @@ def build(proto, lo, hi):
             continue
         truth, d = T[tid]
         rng = np.random.default_rng(zlib.crc32(f"ac{proto}{tid}#{j}".encode()))
-        Vm, S = measurements(d, rng)
+        Vm, S, Va = measurements(d, rng)
         if proto == "uc1":
             doc = truth.copy(); k = rng.choice(E, size=int(round(float(os.environ.get('DOCERR', '0.20')) * E)), replace=False); doc[k] = 1 - doc[k]
         else:
             doc = np.ones(E, int)
-        X = features(doc, Vm, S); X["truth"] = truth; X["group"] = tid; X["case"] = f"{tid}#{j}"
-        pickle.dump(dict(X=X, Vm=Vm, S=S, truth=truth, doc=doc), open(path, "wb"))
+        X = features(doc, Vm, S, Va); X["truth"] = truth; X["group"] = tid; X["case"] = f"{tid}#{j}"
+        pickle.dump(dict(X=X, Vm=Vm, S=S, Va=Va, truth=truth, doc=doc), open(path, "wb"))
 
 
 def evaluate_ml(proto, lo, hi):

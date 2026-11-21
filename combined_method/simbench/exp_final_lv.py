@@ -30,9 +30,48 @@ FINAL = ["log_dist", "dist_rank", "kruskal_in", "dJ", "log_corr", "doc"]
 LIU = ["log_corr", "doc"]
 
 
+def opens(G, tg, cands):
+    """Out-of-service (open) candidate lines: found, false alarms, missed."""
+    on_t = {frozenset(e) for e in tg.edges()}; on_p = {frozenset(e) for e in G.edges()}
+    cs = {frozenset(e) for e in cands}
+    to, po = cs - on_t, cs - on_p
+    return len(to & po), len(po - to), len(to - po)
+
+
 def share(G, tg):
     m = evaluate(G, tg)
     return min(m["precision"], m["recall"])
+
+
+CLF = os.environ.get("CLF", "rf")            # classifier of the combination: rf (Liu's forest), rf300, rfbal, hgb, logreg, mlp
+PASS2 = os.environ.get("PASS2") == "1"        # second pass of the forest around the first-pass topology
+
+
+def make_clf(name):
+    """Liu's random forest always stays a random forest; CLF only swaps the classifier of the combination."""
+    from sklearn.ensemble import HistGradientBoostingClassifier
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.neural_network import MLPClassifier
+    from sklearn.pipeline import make_pipeline
+    from sklearn.preprocessing import StandardScaler
+    if name == "liu" or CLF == "rf":
+        return LF.RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
+    import clf_extra
+    if CLF in clf_extra.NAMES:
+        return clf_extra.make(CLF)
+    if False:
+        return LF.RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
+    if CLF == "rf300":
+        return LF.RandomForestClassifier(n_estimators=300, random_state=42, n_jobs=-1)
+    if CLF == "rfbal":
+        return LF.RandomForestClassifier(n_estimators=100, class_weight="balanced", min_samples_leaf=3, random_state=42, n_jobs=-1)
+    if CLF == "hgb":
+        return HistGradientBoostingClassifier(random_state=42)
+    if CLF == "logreg":
+        return make_pipeline(StandardScaler(), LogisticRegression(max_iter=2000))
+    if CLF == "mlp":
+        return make_pipeline(StandardScaler(), MLPClassifier(hidden_layer_sizes=(32, 16), max_iter=2000, early_stopping=True, random_state=42))
+    raise ValueError(CLF)
 
 
 def probs():
@@ -40,14 +79,38 @@ def probs():
     if os.path.exists(path):
         return pickle.load(open(path, "rb"))
     X, C = LF.add_features(METERS)
+    import clf_extra
+    clf_extra.GROUPS = X["feeder"]                     # inner tuning folds by feeder
+    import fe
+    X, EXTRA = fe.add(X, os.environ.get("FE", ""))      # feature engineering for the combination's classifier
     P = {}
-    for name, cols in (("final", FINAL), ("liu", LIU)):
+    if os.environ.get("P1_FROM"):                   # reuse a cached first pass (same classifier and features)
+        P = dict(pickle.load(open(os.environ["P1_FROM"], "rb"))[1])
+    for name, cols in (("final", FINAL + EXTRA), ("liu", LIU)):
+        if name in P:
+            continue
         p = np.zeros(len(X))
         for f in X.feeder.unique():
             tr, te = X.feeder != f, X.feeder == f
-            clf = LF.RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
+            clf = make_clf(name)
             clf.fit(X.loc[tr, cols], X.loc[tr, "label"]); p[te.values] = clf.predict_proba(X.loc[te, cols])[:, 1]
         P[name] = p
+    if PASS2:                                    # second pass: residual and state around the first-pass tree
+        X = X.copy(); X["dJ2"] = 0.0; X["dec_in"] = 0
+        for case, ix in X.groupby("case").indices.items():
+            c = C[case]; edges = list(X.edge.iloc[ix])
+            cur = {frozenset(e) for e in L.decode(c["nodes"], c["fixed"], edges, P["final"][ix]).edges()}
+            Jf = lambda es: L.resid_J(L.zred(c["nodes"], es, c["par"], c["med"], c["root"]), c["P"], c["Q"], c["V"], None, 0.0025, 1.0)
+            J0 = Jf(cur)
+            for i, e in zip(ix, edges):
+                e = frozenset(e)
+                X.iat[i, X.columns.get_loc("dJ2")] = (J0 - Jf(cur ^ {e})) / J0
+                X.iat[i, X.columns.get_loc("dec_in")] = int(e in cur)
+        cols = FINAL + EXTRA + ["dJ2", "dec_in"]; p = np.zeros(len(X))
+        for f in X.feeder.unique():                      # first-pass p are out-of-feeder, so no leakage
+            tr, te = X.feeder != f, X.feeder == f
+            clf = make_clf("final"); clf.fit(X.loc[tr, cols], X.loc[tr, "label"]); p[te.values] = clf.predict_proba(X.loc[te, cols])[:, 1]
+        P["final"] = p
     out = (X[["case", "feeder", "edge"]].copy(), P)
     pickle.dump(out, open(path, "wb"))
     return out
@@ -63,7 +126,7 @@ def sigmas(c, edges, Va=None):
 GATE = (float(os.environ.get("GLO", 0.2)), float(os.environ.get("GHI", 0.8)))
 
 
-def refine(G, cands, c, p=None, min_gain=0.01, max_iter=30):
+def refine(G, cands, c, p=None, min_gain=float(os.environ.get("MINGAIN", "0.01")), max_iter=30):
     """Branch exchange, pure additions and pure removals of candidate lines,
     accepted while the residual drops > min_gain; with p, only 0.2 < p < 0.8 may move."""
     nodes, root = c["nodes"], c["root"]
@@ -116,8 +179,8 @@ if __name__ == "__main__":
     arg = sys.argv[1]
     if arg == "summary":
         R = pd.concat([pd.read_csv(f) for f in sorted(glob.glob(f"{OUT}/res_*.csv"))])
-        print(len(R), "cases"); print((100 * R.drop(columns=["case"]).mean()).round(2).to_string())
-        for c in R.columns[2:]:
+        print(len(R), "cases"); print((100 * R[[c for c in R.columns if c != "case" and "__" not in c]].mean()).round(2).to_string())
+        for c in [c for c in R.columns[2:] if "__" not in c]:
             print(c, "worse than documented:", int((R[c] < R.documented).sum()))
         sys.exit(0)
     Xe, P = probs()
@@ -129,10 +192,11 @@ if __name__ == "__main__":
         ix = g.index.values; c = C[case]
         edges = list(g.edge); cands = set(edges)
         r = dict(case=case, documented=share(c["doc"], c["tg"]))
+        res = {"documented": c["doc"]}
         # Liu only: forest on correlations + documentation, threshold 0.5, no constraint
         G = nx.Graph(); G.add_nodes_from(c["nodes"]); G.add_edges_from(map(tuple, c["fixed"]))
         G.add_edges_from(tuple(e) for e, q in zip(edges, P["liu"][ix]) if q > 0.5)
-        r["liu_only"] = share(G, c["tg"])
+        r["liu_only"] = share(G, c["tg"]); res["liu_only"] = G
         # ours only: steps 1, 3, 4 without the forest: variance_distance_spanning_tree (Kruskal on the
         # variance distance) -> physics refinement
         r["variance_distance_spanning_tree"] = share(c["base"], c["tg"])
@@ -140,7 +204,10 @@ if __name__ == "__main__":
         # combined
         Gd = L.decode(c["nodes"], c["fixed"], edges, P["final"][ix])
         r["combined_steps_1_3"] = share(Gd, c["tg"])
-        r["combined"] = share(refine(Gd, cands, c, p=dict(zip(edges, P["final"][ix]))), c["tg"])
+        Gc = refine(Gd, cands, c, p=dict(zip(edges, P["final"][ix])))
+        r["combined"] = share(Gc, c["tg"]); res["combined_steps_1_3"] = Gd; res["combined"] = Gc
+        for m, Gm in res.items():                       # second metric: open lines found / false alarms / missed
+            r[f"{m}__open_tp"], r[f"{m}__open_fp"], r[f"{m}__open_fn"] = opens(Gm, c["tg"], cands)
         rows.append(r)
     pd.DataFrame(rows).to_csv(f"{OUT}/res_{arg}.csv", index=False)
     print(code, "done", flush=True)

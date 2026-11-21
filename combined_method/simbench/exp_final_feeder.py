@@ -37,11 +37,19 @@ def vt_assign(V, doc, k=5, known=None):
     return lab
 
 
-def rf_lofo(X, cols, group, K):
+def rf_lofo(X, cols, group, K, comb=False):
+    import os as _o
+    clfname = _o.environ.get("CLF", "rf")              # classifier of the combination (Liu's forest never changes)
     p = np.zeros(len(X))
+    if comb and clfname != "rf":
+        import clf_extra
+        clf_extra.GROUPS = X[group]
     for g in X[group].unique():
         tr, te = (X[group] != g).values, (X[group] == g).values
-        clf = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
+        if comb and clfname != "rf":
+            clf = clf_extra.make(clfname)
+        else:
+            clf = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
         clf.fit(X.loc[tr, cols], X.loc[tr, "label"]); p[te] = clf.predict_proba(X.loc[te, cols])[:, 1]
     X = X.assign(p=p)
     return {cs: g.sort_values(["i", g.columns[1]]).p.values.reshape(-1, K(cs)) for cs, g in X.groupby("case")}
@@ -56,11 +64,11 @@ def feeder():
     def corr(a):
         a = (a - a.mean(0)) / (a.std(0) + 1e-12); C = a.T @ a / len(a); np.fill_diagonal(C, np.nan); return C
 
-    def correct(Pc, head, lab, K, free, max_moves=200):
+    def correct(Pc, head, lab, K, free, max_moves=200, mg=0.0):
         lab = lab.copy()
         R = head - np.stack([Pc[:, lab == f].sum(1) for f in range(K)], 1)
         for _ in range(max_moves):
-            best, bi, bf = 0.0, None, None
+            best, bi, bf = mg * (R ** 2).sum(), None, None   # mg: minimum relative gain of the residual
             for i in np.where(free)[0]:
                 a = lab[i]; p = Pc[:, i]; base = (R[:, a] ** 2).sum()
                 for f in range(K):
@@ -110,9 +118,28 @@ def feeder():
     X = pd.DataFrame(rows)
     Kof = lambda cs: cases[cs][4]
     PL = rf_lofo(X, ["peer_top3", "peer_mean", "doc"], "net", Kof)
-    PF = rf_lofo(X, ["peer_top3", "peer_mean", "doc"] + ([] if NOHEAD else ["power_gain"]), "net", Kof)
+    PF = rf_lofo(X, ["peer_top3", "peer_mean", "doc"] + ([] if NOHEAD else ["power_gain"]), "net", Kof, comb=True)
+    PF2 = None
+    if __import__("os").environ.get("PASS2") == "1" and not (NOHEAD or MISSING):
+        # second pass: the residual features are recomputed around the first-pass assignment instead of the register
+        g2 = {}
+        for cs, (truth, doc, Pc, head, K, Vrel, lab_liu) in cases.items():
+            dec = PF[cs].argmax(1)
+            R = head - np.stack([Pc[:, dec == f].sum(1) for f in range(K)], 1); J = (R ** 2).sum()
+            for i in range(len(dec)):
+                a = dec[i]; p = Pc[:, i]
+                for f in range(K):
+                    g = 0.0 if f == a else ((R[:, a] ** 2).sum() + (R[:, f] ** 2).sum()
+                                            - ((R[:, a] + p) ** 2).sum() - ((R[:, f] - p) ** 2).sum()) / J
+                    g2[(cs, i, f)] = (g, int(a == f))
+        v = [g2[(cs, i, f)] for cs, i, f in zip(X.case, X.i, X.f)]
+        X = X.assign(power_gain2=[a for a, b in v], dec_in=[b for a, b in v])
+        PF2 = rf_lofo(X, ["peer_top3", "peer_mean", "doc", "power_gain", "power_gain2", "dec_in"], "net", Kof, comb=True)
     out = []
     for cs, (truth, doc, Pc, head, K, Vrel, lab_liu) in cases.items():
+        p2 = {} if PF2 is None else dict(combined_p2=(correct(Pc, head, PF2[cs].argmax(1), K, PF2[cs].max(1) < GATE_HI,
+                                                              mg=float(__import__("os").environ.get("MINGAIN", "0.001"))) == truth).mean(),
+                                         steps_1_3_p2=(PF2[cs].argmax(1) == truth).mean())
         dec = PF[cs].argmax(1)
         known = doc >= 0
         if NOHEAD:                                             # no feeder-head balance: forest decision only
@@ -127,18 +154,21 @@ def feeder():
         else:
             vt = vt_assign(Vrel, doc); ours = correct(Pc, head, doc, K, np.ones(len(doc), bool))
             comb = correct(Pc, head, dec, K, PF[cs].max(1) < GATE_HI)
+            grid = {f"g{g}_m{m}": (correct(Pc, head, dec, K, PF[cs].max(1) < g, mg=m) == truth).mean()
+                    for g in (0.95, 1.01) for m in (0.0, 0.001, 0.01)} if __import__("os").environ.get("GRID") == "1" else {}
         out.append(dict(case=cs, documented=(doc == truth).mean(),
                         variance_distance_spanning_tree=(vt == truth).mean(), liu_only=(PL[cs].argmax(1) == truth).mean(), liu_cluster=(lab_liu == truth).mean(),
                         ours_only=(ours == truth).mean(), combined_steps_1_3=(dec == truth).mean(), combined=(comb == truth).mean(),
                         liu_cluster_unknown=(lab_liu == truth)[~known].mean() if MISSING else np.nan,
-                        combined_unknown=(comb == truth)[~known].mean() if MISSING else np.nan))
+                        combined_unknown=(comb == truth)[~known].mean() if MISSING else np.nan,
+                        **({} if NOHEAD or MISSING else grid), **p2))
     return pd.DataFrame(out)
 
 
 if __name__ == "__main__":
     which = "feeder"
     R = feeder()
-    R.to_csv(f"{SB_WORK}/final_{which}" + ("_missing" if MISSING else "") + ("_nohead" if NOHEAD else "") + ("_month" if __import__("os").environ.get("MONTH") == "1" else "") + ".csv", index=False)
+    R.to_csv(f"{SB_WORK}/final_{which}" + ("_missing" if MISSING else "") + ("_nohead" if NOHEAD else "") + ("_month" if __import__("os").environ.get("MONTH") == "1" else "") + __import__("os").environ.get("SUFFIX2", "") + ".csv", index=False)
     cols = [c for c in R.columns if c != "case"]
     print(which, len(R), "cases"); print((100 * R[cols].mean()).round(2).to_string())
     for c in cols[1:]:

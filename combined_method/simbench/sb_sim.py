@@ -15,7 +15,7 @@ from topology.data import topology_of, SIMBENCH_FEEDERS  # noqa: E402
 MONTH = os.environ.get("MONTH") == "1"
 INDIV = os.environ.get("INDIV") == "1"              # individual customer profiles; use with its own CM_WORK
 OUT = f"{SB_WORK}/sb_cache_month" if MONTH else f"{SB_WORK}/sb_cache"
-START, STEPS, S_BASE = 96 * 7 * 26, (2880 if MONTH else 672), 1.0
+START, STEPS, S_BASE = 96 * 7 * 26, (2880 * int(os.environ.get("NMONTHS", "1")) if MONTH else 672), 1.0   # NMONTHS: 30-day blocks
 
 
 def run(code):

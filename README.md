@@ -7,7 +7,7 @@ The repository has three parts.
 | Folder | What it is |
 |---|---|
 | [`variance_distance_spanning_tree/`](variance_distance_spanning_tree/) | The original service: validates the documented topology of an LV network against smart meter voltages (variance distance + Kruskal), with its report and experiments. |
-| [`combined_method/`](combined_method/) | All four use cases: the random forest of Dong Liu (TU Delft) combined with Variance-Distance Spanning Tree, the power-flow residual and a physics refinement, on SimBench (LV, MV) and on the ACTIVSg2000 Far West transmission area. Code to reproduce every result, the results and the summary ([`RESULTS.md`](combined_method/RESULTS.md)). |
+| [`combined_method/`](combined_method/) | All four use cases: the random forest of Dong Liu (TU Delft) combined with Variance-Distance Spanning Tree, the power-flow residual and a physics refinement, on SimBench (LV, MV) and on the ACTIVSg2000 Far West transmission area. Code to reproduce every result, the results and the summary ([`RESULTS.md`](combined_method/RESULTS.md)). The final method (XGBoost or TabFM, neighbourhood features, refinement without gate, second pass) is in [`FINAL_METHOD.md`](combined_method/FINAL_METHOD.md). |
 | [`uc3_siamese_method/`](uc3_siamese_method/) | Use case 3 (phase identification): the siamese method of Dong Liu, our implementation from the paper, reported next to the combination. |
 
 ## Results at a glance (one month of data, no phase angle)

@@ -1,0 +1,13 @@
+use case,classifier,"original (RF, 1 pass)",final,cases
+DSO 1 LV,xgb_tuned,95.1,98.1,72
+DSO 2 feeder,xgb_tuned,94.2,94.1,72
+DSO 3 phase,xgb_tuned,98.9,98.9,72
+DSO 4 MV,xgb_tuned,95.0 · 28,97.2 · 16,64
+TSO 1,xgb_tuned,99.46 · 98/138 · 14,99.34 · 117/138 · 45,93
+TSO 4,xgb_tuned,90.0 (279/310) · 14,93.2 (289/310) · 32,62
+DSO 1 LV,tabfm,95.1,98.1,72
+DSO 2 feeder,tabfm,94.2,–,0
+DSO 3 phase,tabfm,98.9,–,0
+DSO 4 MV,tabfm,95.0 · 28,–,0
+TSO 1,tabfm,99.46 · 98/138 · 14,–,0
+TSO 4,tabfm,90.0 (279/310) · 14,96.5 (299/310) · 30,62

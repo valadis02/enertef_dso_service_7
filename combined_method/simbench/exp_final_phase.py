@@ -24,7 +24,7 @@ from topology.data import SIMBENCH_FEEDERS  # noqa: E402
 import networkx as nx  # noqa: E402
 import liu_cluster as LC  # noqa: E402
 
-GATE_HI = 0.95
+GATE_HI = float(os.environ.get("ASSIGN_GATE", "0.95"))   # 1.01 = refine every customer
 CASES = {}
 LIU_LAB = {}
 
@@ -131,11 +131,19 @@ def vt_assign(V, doc, k=5):
     return lab
 
 
-def rf_lofo(X, cols, group, K):
+def rf_lofo(X, cols, group, K, comb=False):
+    import os as _o
+    clfname = _o.environ.get("CLF", "rf")              # classifier of the combination (Liu's forest never changes)
     p = np.zeros(len(X))
+    if comb and clfname != "rf":
+        import clf_extra
+        clf_extra.GROUPS = X[group]
     for g in X[group].unique():
         tr, te = (X[group] != g).values, (X[group] == g).values
-        clf = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
+        if comb and clfname != "rf":
+            clf = clf_extra.make(clfname)
+        else:
+            clf = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
         clf.fit(X.loc[tr, cols], X.loc[tr, "label"]); p[te] = clf.predict_proba(X.loc[te, cols])[:, 1]
     X = X.assign(p=p)
     return {cs: g.sort_values(["i", g.columns[1]]).p.values.reshape(-1, K(cs)) for cs, g in X.groupby("case")}
@@ -158,10 +166,26 @@ def phase():
             lab[move] = R.argmin(1)[move]
         return lab
 
-    PL = rf_lofo(X, LIU, "feeder", lambda cs: 3); PF = rf_lofo(X, FIN, "feeder", lambda cs: 3)
+    PL = rf_lofo(X, LIU, "feeder", lambda cs: 3); PF = rf_lofo(X, FIN, "feeder", lambda cs: 3, comb=True)
+    PF2 = None
+    if os.environ.get("PASS2") == "1":
+        # second pass: the physics residual is recomputed around the first-pass phases instead of the register
+        ext = {}
+        for cs in B.case:
+            c, Zc = CASES[cs]; dec = PF[cs].argmax(1); R2 = physics_resid(c, Zc, dec)
+            for i in range(len(dec)):
+                for ph in range(3):
+                    ext[(cs, i, ph)] = (np.log10(R2[i, ph] / R2[i].min()), (R2[i] < R2[i, ph]).sum(), int(dec[i] == ph))
+        v = [ext[(cs, i, ph)] for cs, i, ph in zip(X.case, X.i, X.ph)]
+        X = X.assign(resid2=[a for a, b, d in v], resid_rank2=[b for a, b, d in v], dec_in=[d for a, b, d in v])
+        PF2 = rf_lofo(X, FIN + ["resid2", "resid_rank2", "dec_in"], "feeder", lambda cs: 3, comb=True)
     rows = []
     for cs in B.case:
         c, Zc = CASES[cs]; t = c["truth"]
+        p2 = {} if PF2 is None else dict(
+            combined_p2=(refine(c, Zc, PF2[cs].argmax(1), PF2[cs].max(1) < GATE_HI,
+                                margin=float(os.environ.get("MINGAIN", "0.001"))) == t).mean(),
+            steps_1_3_p2=(PF2[cs].argmax(1) == t).mean())
         allfree = np.ones(len(t), bool)
         dec = PF[cs].argmax(1)
         rows.append(dict(case=cs, documented=(c["doc"] == t).mean(),
@@ -169,7 +193,9 @@ def phase():
                          liu_only=(PL[cs].argmax(1) == t).mean(), liu_cluster=(LIU_LAB[cs] == t).mean(),
                          ours_only=(refine(c, Zc, c["doc"], allfree) == t).mean(),
                          combined_steps_1_3=(dec == t).mean(),
-                         combined=(refine(c, Zc, dec, PF[cs].max(1) < GATE_HI) == t).mean()))
+                         combined=(refine(c, Zc, dec, PF[cs].max(1) < GATE_HI) == t).mean(),
+                         **({f"g{g}_m{m}": (refine(c, Zc, dec, PF[cs].max(1) < g, margin=m) == t).mean()
+                             for g in (0.95, 1.01) for m in (0.001, 0.01, 0.05)} if os.environ.get("GRID") == "1" else {}), **p2))
     return pd.DataFrame(rows)
 
 
@@ -177,6 +203,6 @@ def phase():
 
 if __name__ == "__main__":
     R = phase()
-    R.to_csv(f"{SB_WORK}/final_phase" + ("_month" if os.environ.get("MONTH") == "1" else "") + ".csv", index=False)
+    R.to_csv(f"{SB_WORK}/final_phase" + ("_month" if os.environ.get("MONTH") == "1" else "") + __import__("os").environ.get("SUFFIX2", "") + ".csv", index=False)
     cols = [c for c in R.columns if c != "case"]
     print("phase", len(R), "cases"); print((100 * R[cols].mean()).round(2).to_string())

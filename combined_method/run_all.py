@@ -8,6 +8,9 @@
     python run_all.py --stage far_west_fast --workers 2 # Far West, fast mode + wrong lengths, 70/80/90%
     python run_all.py --stage collect                   # copy the per-case results to work/results/
     python run_all.py --stage tables                    # print the tables from work/results/
+    python run_all.py --stage original --workers 2      # original method, the six main experiments (80%)
+    python run_all.py --stage final --clf xgb_tuned     # final method (FINAL_METHOD.md), same six experiments
+    python run_all.py --stage final --clf tabfm         # final method with TabFM as the classifier
 
 Each scenario runs in its own folder under work/ (or CM_WORK). Steps whose output
 exists are skipped, so an interrupted run can be started again. All random choices
@@ -39,8 +42,9 @@ def env(scenario, **kw):
     return e
 
 
-def run(args, cwd, e):
-    out = os.path.join(e["CM_WORK"], "done", "_".join(a.replace("/", "-") for a in args)[:150])
+def run(args, cwd, e, tag=""):
+    """Run one step unless its done-marker exists. tag: separates variants that use the same arguments."""
+    out = os.path.join(e["CM_WORK"], "done", tag + "_".join(a.replace("/", "-") for a in args)[:150])
     if os.path.exists(out):
         return
     print("  $", " ".join(args), f"[{os.path.basename(e['CM_WORK'])}]", flush=True)
@@ -55,6 +59,14 @@ def parallel(jobs, w):
         list(ex.map(lambda j: run(*j), jobs))
 
 
+def link(src, dst):
+    """Symbolic link where allowed (Linux, macOS, Windows developer mode), else a copy."""
+    try:
+        os.symlink(src, dst)
+    except OSError:
+        (shutil.copytree if os.path.isdir(src) else shutil.copy)(src, dst)
+
+
 def lv_profiles(w):
     """One month of LV power flow with personalized profiles, shared by every LV scenario."""
     e = env("lv_profiles", INDIV="1")
@@ -65,7 +77,7 @@ def lv_profiles(w):
 def link_cache(cache, scenario):
     d = os.path.join(WORK, scenario, "simbench"); os.makedirs(d, exist_ok=True)
     if not os.path.exists(os.path.join(d, "sb_cache_month")):
-        os.symlink(cache, os.path.join(d, "sb_cache_month"))
+        link(cache, os.path.join(d, "sb_cache_month"))
 
 
 def lv_uc1(e, w):
@@ -115,11 +127,11 @@ def mv_level(L, err, w, meter=None):
                             f"n=int((M.mv_model(net)[3]==0).sum()); print(max(1, round(float(os.environ['DOCERR'])*n)))"],
                            cwd=SB_CODE, env=e, capture_output=True, text=True).stdout.strip().splitlines()[-1]
         se = env(f"mv_sim_m{m}", DOCERR=err, MVSET="85", INDIV="1", NETS=i)
-        run(["mv_sim.py", "100000"], SB_CODE, se)
+        run(["mv_sim.py", "100000", f"net{i}"], SB_CODE, se)        # one done-marker per network
         src = os.path.join(se["CM_WORK"], "simbench", "mv_cache85_month")
         for f in os.listdir(src):
             if f.startswith(code) and not os.path.exists(os.path.join(cache, f)):
-                os.symlink(os.path.join(src, f), os.path.join(cache, f))
+                link(os.path.join(src, f), os.path.join(cache, f))
     parallel([(["exp_mv.py", "class_0.5", c, f"{lo}-{lo + 4}"], SB_CODE, e) for c in MV for lo in (0, 4, 8, 12)], w)
     run(["-c", "import sys; sys.argv=['x','summary']; import exp_final_mv as E; E.data()"], SB_CODE, e)
     parallel([(["exp_final_mv.py", str(i)], SB_CODE, e) for i in (0, 1, 3)] +
@@ -159,7 +171,7 @@ def fw_scenario(s, q, cfg, w, uc4, **kw):
     d = os.path.join(e["CM_WORK"], "far_west"); os.makedirs(d, exist_ok=True)
     for name in ("scen_q_month", "scen_multi_q_month", "scen_fw7_month"):
         if not os.path.exists(os.path.join(d, name)):
-            os.symlink(os.path.join(q, name), os.path.join(d, name))
+            link(os.path.join(q, name), os.path.join(d, name))
     n1 = 3 * (len(cfg["singles"]) + len(cfg["multi"]))
     step = max(1, n1 // (4 * w))
     parallel([(["fw_ac.py", "build", "uc1", str(a), str(min(a + step, n1))], FW_CODE, e) for a in range(0, n1, step)], w)
@@ -183,6 +195,70 @@ def far_west_fast(w):
     for L, err in LEVELS.items():
         print(f"[Far West {L}%] fast mode (every 2nd hour, every other case), wrong lengths", flush=True)
         fw_scenario(f"far_west_fast_realistic_doc{L}", q, cfg, w, L == 80, DOCERR=err, REG="real", FWSUB=2, FWHALF=1)
+
+
+# --------------------------------------------------------------------------------------------------
+# Final method (November 2026), the same for every use case, DSO and TSO:
+#   classifier CLF (xgb_tuned or tabfm) instead of the random forest, neighbourhood features (rel, loc where
+#   the line end-points are known), greedy refinement with no probability gate and a minimum gain of 0.1%,
+#   and a second pass (the physics features are recomputed around the first-pass estimate, then retrained).
+# Compared with the original method (random forest, gate 0.05-0.95, minimum gain 1%, one pass), register 80%:
+#   DSO 1 LV, 2 feeder, 3 phase, 4 MV (all substations metered); TSO 1 and 4 on Far West with PMU angles.
+# --------------------------------------------------------------------------------------------------
+FINAL = dict(GLO="-1", GHI="2", MINGAIN="0.001")
+TSO = "far_west_doc80_angle01"
+
+
+def original(w):
+    """Original method on the six main experiments (also the inputs of the final method)."""
+    cache = lv_profiles(w); s = "lv_doc80"; link_cache(cache, s)
+    print("[original] DSO use cases 1-3 (LV 80%)", flush=True)
+    lv_uc1(env(s, DOCERR="0.20", CANDS="all"), w)
+    run(["exp_final_feeder.py"], SB_CODE, env(s, DOCERR="0.20", ASSIGN_GATE="1.01"))
+    run(["exp_final_phase.py"], SB_CODE, env(s, DOCERR="0.20"))
+    print("[original] DSO use case 4 (MV 80%)", flush=True)
+    mv_level(80, "0.20", w)
+    q, cfg = fw_inputs(w)
+    print("[original] TSO use cases 1 and 4 (Far West 80%, PMU angles 0.1 deg)", flush=True)
+    fw_scenario(TSO, q, cfg, w, True, DOCERR="0.20", ANGLE="0.1")
+
+
+def final(w, clf):
+    """Final method with classifier clf on the six main experiments; runs original() first if needed."""
+    original(w)
+    t = f"final_{clf}_"
+    # DSO 1: LV
+    print(f"[final {clf}] DSO use case 1 (LV)", flush=True)
+    e = env("lv_doc80", DOCERR="0.20", CANDS="all", CLF=clf, FE="rel,loc", PASS2="1", SUFFIX=f"_month_final_{clf}", **FINAL)
+    run(["exp_final_lv.py", "0"], SB_CODE, e, t)                    # trains both passes once
+    parallel([(["exp_final_lv.py", str(i)], SB_CODE, e, t) for i in range(1, len(LV))], w)
+    # DSO 2 and 3 (the grid columns are not used; combined_p2 is the final method)
+    print(f"[final {clf}] DSO use cases 2 and 3", flush=True)
+    for script in ("exp_final_feeder.py", "exp_final_phase.py"):
+        run([script], SB_CODE, env("lv_doc80", DOCERR="0.20", CLF=clf, ASSIGN_GATE="1.01", PASS2="1",
+                                   SUFFIX2=f"_final_{clf}", **FINAL), t)
+    # DSO 4: MV, first pass, residual around it, second pass
+    print(f"[final {clf}] DSO use case 4 (MV)", flush=True)
+    s = "mv_doc80"; mvo = os.path.join(WORK, s, "simbench", f"final_mv85_month_{clf}")
+    e1 = env(s, DOCERR="0.20", MVSET="85", VAR=clf, FE="rel", OUTTAG="", **FINAL)
+    run(["-c", "import sys; sys.argv=['x','summary']; import exp_final_mv as E; E.data()"], SB_CODE, e1, t + "p1_")
+    e2 = env(s, DOCERR="0.20", MVSET="85", VAR=clf, FE="rel", OUTTAG="_p2", MVPASS2="1",
+             P1SRC=os.path.join(mvo, "data.pkl"), **FINAL)
+    parallel([(["exp_final_mv.py", "ext", str(i)], SB_CODE, e2, t) for i in range(len(MV))], w)
+    run(["-c", "import sys; sys.argv=['x','summary']; import exp_final_mv as E; E.data()"], SB_CODE, e2, t + "p2_")
+    parallel([(["exp_final_mv.py", str(i)], SB_CODE, e2, t) for i in (0, 1, 3)] +
+             [(["exp_final_mv.py", "2", f"{lo}-{lo + 4}"], SB_CODE, e2, t) for lo in (0, 4, 8, 12)], w)
+    # TSO 1 and 4: first pass, second-pass features, second pass
+    for uc, script, pre, n in (("uc1", "exp_final_fw.py", ["uc1"], 96), ("uc4", "exp_final_fw7.py", [], 66)):
+        print(f"[final {clf}] TSO {uc}", flush=True)
+        e = env(TSO, FWSTEP=1, FWHOURS=720, FWK=5, DOCERR="0.20", ANGLE="0.1", CLF=clf, FE="rel,loc",
+                OUTSFX=f"_final_{clf}", FWGLO="-1", FWGHI="2", MINGAIN="0.001")
+        run([script] + pre + ["run", "0", "0"], FW_CODE, e, t)
+        parallel([([script] + pre + ["pass2", str(a), str(a + 6)], FW_CODE, e, t) for a in range(0, n, 6)], w)
+        e2 = dict(e, PASS2="1")
+        run([script] + pre + ["run", "0", "0"], FW_CODE, e2, t + "p2_")
+        parallel([([script] + pre + ["run", str(a), str(a + 6)], FW_CODE, e2, t + "p2_") for a in range(0, n, 6)], w)
+    subprocess.run([sys.executable, os.path.join(HERE, "final_table.py"), "--work", WORK, "--clf", clf])
 
 
 def collect():
@@ -218,10 +294,13 @@ def collect():
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--stage", required=True, choices=["lv", "lv_realistic", "selftrain", "mv", "far_west",
-                                                       "far_west_fast", "collect", "tables"])
+                                                       "far_west_fast", "collect", "tables", "original", "final"])
     ap.add_argument("--workers", type=int, default=2)
+    ap.add_argument("--clf", default="xgb_tuned", choices=["xgb_tuned", "tabfm"], help="classifier of the final method")
     a = ap.parse_args()
-    if a.stage == "collect":
+    if a.stage == "final":
+        final(a.workers, a.clf)
+    elif a.stage == "collect":
         collect()
     elif a.stage == "tables":
         subprocess.run([sys.executable, os.path.join(HERE, "make_tables.py"), "--dir", os.path.join(WORK, "results")])

@@ -18,6 +18,7 @@ Share of the network in the right state, for documentation 70 / 80 / 90% correct
 | meter at half of the MV/LV substations (80%) | 81.5 | 29.2 | 69.8 | 88.3 | – |
 | 4 · Far West (80% only) | 80.0 | 74.5 | 71.9 | 85.8 | – |
 | fast mode + wrong lengths | 80.0 | 74.2 | 68.4 | 82.6 | – |
+| Far West + PMU angles (σ 0.1°) + second pass | 80.0 | 74.8 | 71.9 | 92.3 | – |
 
 
 | Use case 4 · false openings | Documented | Variance-Distance Spanning Tree | Random forest (Liu) | Combination |
@@ -27,6 +28,7 @@ Share of the network in the right state, for documentation 70 / 80 / 90% correct
 | MV 90% | 64 | 113 | 83 | 22 |
 | MV 80%, half metered | 96 | 355 | 149 | 65 |
 | Far West 80% | 62 | 1009 | 84 | 26 |
+| Far West 80%, angles + second pass | 62 | 1008 | 84 | 15 |
 
 ## Reading the table
 
@@ -34,6 +36,8 @@ Share of the network in the right state, for documentation 70 / 80 / 90% correct
 - **Realistic register (LV).** The cable list also holds 20% spare cables, and 20% of the lengths are wrong by 10–30%. Variance-Distance Spanning Tree drops from about 95% to 82–86% (it relies on the cable list alone); the combination keeps 85–95% and leads by 4–9 points.
 - **Training only from the register.** The forest never sees a verified topology: it is trained on synthetic errors added to the operator's own register, with the measured P, Q. 89.1% against 89.7% with verified training networks.
 - **Far West fast mode** (every second hour, every other case, 20% of the branch lengths wrong): nearly identical to the full run for use case 1; for use case 4 the gain over the documentation shrinks from 5.8 to 2.6 points.
+- **Second pass (Far West use case 4, with angles).** The power-flow residual is recomputed around the topology decoded from the first-pass (out-of-fold) probabilities, and the forest is retrained with these extra features. 90.6% → 92.3% of the out-of-service branches (281 → 286 of 310), false outages 13 → 15; better in 7 cases, worse in 3. On SimBench it helps only with a poor register (LV realistic +0.3, MV 70% +0.9, MV half metered +0.7) and is neutral to slightly negative at MV 80/90%. Results: `results/far_west_doc80_angle01/uc4_pass2/`, `results/extra/`.
+- **Robustness of the classifier.** Replacing the random forest (HGB, logistic regression, MLP, 300 trees, balanced) changes nothing material; removing the power-flow residual or the refinement costs about 3 points on MV half metered.
 - **Use case 2 needs the feeder-head measurement.** Without it the combination stays at the level of the documentation (+0.7–1.6 points).
 - **30% unlabelled, as in Liu's paper** (70% known labels, the rest correct): share of all customers right; of the unknown customers the combination finds 89.6%, Liu's KNN on the voltage series 68.7%.
 - **Siamese (Liu)**, use case 3: uses only active power, no voltage and no register, so it is the same at every level.

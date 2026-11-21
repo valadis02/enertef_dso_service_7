@@ -23,7 +23,7 @@ import simbench as sb
 
 MV_NETS = ["1-MV-rural--0-sw", "1-MV-semiurb--0-sw", "1-MV-urban--0-sw", "1-MV-comm--0-sw"]
 OUT = (f"{SB_WORK}/mv_cache85" if os.environ.get("MVSET") == "85" else f"{SB_WORK}/mv_cache") + ("_month" if os.environ.get("MONTH") == "1" else "")
-START, STEPS = 96 * 7 * 26, (2880 if os.environ.get("MONTH") == "1" else 672)
+START, STEPS = 96 * 7 * 26, (2880 * int(os.environ.get("NMONTHS", "1")) if os.environ.get("MONTH") == "1" else 672)
 N_CONF = 16
 
 
