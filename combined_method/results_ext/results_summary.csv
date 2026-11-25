@@ -1,0 +1,31 @@
+use_case,scenario,method,percent_correct,diff_vs_combination,ci95,cases_better,cases_worse,note
+UC1,ideal register,Documented register,79.78,-15.44,0.66,0,72,
+UC1,ideal register,Random forest (Liu) alone,80.22,-15.01,1.50,0,72,
+UC1,ideal register,Variance-Distance Spanning Tree,94.79,-0.44,0.29,12,26,
+UC1,ideal register,Physics only (VDST + refinement),95.89,0.66,0.62,20,12,
+UC1,ideal register,Combination (original RF),95.23,0.00,,,,baseline
+UC1,ideal register,Best other classifier (LightGBM + calibration),95.27,0.04,0.20,12,10,9 classifier variants: 94.81-95.27
+UC1,ideal register,Annealing with forest prior,95.61,0.38,0.53,9,10,
+UC1,ideal register,Annealing pure physics,94.60,-0.63,1.28,16,35,
+UC1,ideal register,MILP pure physics,89.73,-4.66,2.06,9,32,46 of 72 cases with a solution in 120 s
+UC1,ideal register,MILP with forest gate,93.74,-1.27,0.63,4,28,54 of 72 cases with a solution
+UC1,ideal register,Joint topology + line lengths (physics only),95.67,0.44,0.56,18,12,fixed lengths: 95.89
+UC1,ideal register,Graph features + gradient boosting,97.00,1.77,0.57,47,2,
+UC1,ideal register,Control: gradient boosting without graph features,94.81,-0.42,0.28,8,24,
+UC1,ideal register,Trainable GNN,98.22,2.99,0.56,63,2,
+UC1,realistic register,Documented register,79.78,-9.89,0.94,1,68,
+UC1,realistic register,Random forest (Liu) alone,69.54,-20.13,1.45,1,71,
+UC1,realistic register,Variance-Distance Spanning Tree,83.46,-6.22,0.89,2,67,
+UC1,realistic register,Physics only (VDST + refinement),84.54,-5.14,1.20,4,63,
+UC1,realistic register,Combination (original RF),89.67,0.00,,,,baseline
+UC1,realistic register,Joint topology + line lengths (physics only),84.23,,,,,fixed lengths: 84.55
+UC1,realistic register,Graph features + gradient boosting,93.00,3.32,0.69,59,3,
+UC1,realistic register,Control: gradient boosting without graph features,89.36,-0.31,0.54,18,24,
+UC1,realistic register,Trainable GNN,94.31,4.63,1.07,60,5,worse than the combination on feeder rural1
+UC2,ideal register,Documented,79.12,,,,,
+UC2,ideal register,Combination (original RF),94.20,0.00,,,,baseline
+UC2,ideal register,Graph features + gradient boosting,93.49,,,,,before refinement 86.10 (control 81.65)
+UC1,ideal register (quick: 40 epochs 1 seed),Single-task GNN,97.82,2.59,0.59,59,3,
+UC1,ideal register (quick: 40 epochs 1 seed),Multi-task GNN (UC1 + UC2),97.03,1.80,0.78,47,5,vs single-task -0.78 +- 0.94
+UC2,ideal register (quick: 40 epochs 1 seed),Single-task GNN,94.38,0.18,2.16,27,12,
+UC2,ideal register (quick: 40 epochs 1 seed),Multi-task GNN (UC1 + UC2),94.49,0.29,2.42,33,13,vs single-task +0.11 +- 1.38
